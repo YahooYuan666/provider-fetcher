@@ -109,6 +109,14 @@ def touch_favorite(favorite_id: str, last_counts: dict[str, Any] | None = None) 
     return save_favorites(items)
 
 
+def find_credential(base_url: str, api_key: str) -> dict[str, Any] | None:
+    normalized = normalize_base_url(base_url)
+    key = (api_key or "").strip()
+    if not key:
+        return None
+    return next((item for item in load_favorites() if _same_credential(item, normalized, key)), None)
+
+
 def get_favorite(favorite_id: str) -> dict[str, Any]:
     for item in load_favorites():
         if item.get("id") == favorite_id:

@@ -19,7 +19,9 @@ const els = {
   modelRows: document.getElementById("modelRows"),
   favoriteRows: document.getElementById("favoriteRows"),
   search: document.getElementById("search"),
+  toast: document.getElementById("toast"),
 };
+let toastTimer = 0;
 
 function formatNumber(value) {
   return typeof value === "number" ? value.toLocaleString("en-US") : "—";
@@ -38,6 +40,18 @@ function kindLabel(kind) {
 
 function setStatus(text) {
   els.statusLine.textContent = text;
+}
+
+function hideToast() {
+  els.toast.classList.add("hidden");
+  els.toast.innerHTML = "";
+}
+
+function showToast(title, body) {
+  els.toast.innerHTML = `<strong>${escapeHtml(title)}</strong><div>${escapeHtml(body)}</div>`;
+  els.toast.classList.remove("hidden");
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(hideToast, 8000);
 }
 
 function currentCredential() {
@@ -144,7 +158,11 @@ function applyFetchResult(data, options = {}) {
   setStatus(`拉到 ${counts.all || 0} 个模型，知识库命中 ${counts.matched || 0} 个。对话 ${counts.chat || 0} / 生图 ${counts.image || 0} / 生视频 ${counts.video || 0}。可收藏这组 URL + Key，下次再向供应商拉最新名单。`);
   renderModels();
   if (data.favorites) applyFavorites(data.favorites);
-}
+  if (options.suggestSave && data.suggest_save && canSaveFavorite()) {
+    showToast("检测到新的凭据组合", "建议收藏这组 Base URL + API Key，供应商更新模型后可再查最新名单。");
+  } else {
+    hideToast();
+  }
 
 els.form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -155,7 +173,7 @@ els.form.addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify(currentCredential()),
     });
-    applyFetchResult(data);
+    applyFetchResult(data, { suggestSave: true });
   } catch (error) {
     setStatus(`获取失败：${error.message}`);
   } finally {
@@ -176,6 +194,7 @@ els.saveFavoriteBtn.addEventListener("click", async () => {
       }),
     });
     applyFavorites(data.items);
+    hideToast();
     setStatus("已收藏这组 Base URL + API Key。下次可直接点「再查最新」，向供应商拉取当前模型名单。");
   } catch (error) {
     setStatus(`收藏失败：${error.message}`);

@@ -5,7 +5,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .catalog import Catalog
-from .favorites import load_last_fetch, public_favorites, save_last_fetch
+from .favorites import find_credential, load_last_fetch, public_favorites, save_last_fetch
 from .fetch import fetch_model_ids
 from .urlutil import normalize_base_url
 
@@ -43,6 +43,7 @@ def fetch_and_enrich(base_url: str, api_key: str, catalog: Catalog | None = None
     catalog = catalog or Catalog.load()
     fetched = fetch_model_ids(normalized, api_key)
     rows = enrich_models(normalized, fetched["models"], catalog)
+    already_saved = find_credential(normalized, api_key) is not None
     result = {
         "ok": True,
         "base_url": normalized,
@@ -54,6 +55,8 @@ def fetch_and_enrich(base_url: str, api_key: str, catalog: Catalog | None = None
         "catalog_fetched_at": catalog.fetched_at,
         "counts": _counts(rows),
         "models": rows,
+        "already_saved": already_saved,
+        "suggest_save": not already_saved,
     }
     save_last_fetch(
         {

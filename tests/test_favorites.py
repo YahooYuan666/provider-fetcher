@@ -58,6 +58,13 @@ class FavoriteCredentialTests(unittest.TestCase):
     def test_mask_short_key(self):
         self.assertEqual(favorites.mask_api_key("abcd"), "a…d")
 
+    def test_find_credential_detects_saved_combo(self):
+        favorites.upsert_credential("https://api.example.com/v1", "sk-test-key-123456")
+        found = favorites.find_credential("https://api.example.com/v1/", "sk-test-key-123456")
+        missing = favorites.find_credential("https://api.example.com/v1", "sk-other-key-000000")
+        self.assertIsNotNone(found)
+        self.assertIsNone(missing)
+
 
 if __name__ == "__main__":
     unittest.main()

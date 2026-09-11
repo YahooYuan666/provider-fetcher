@@ -117,7 +117,9 @@ def serve(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) 
         raise SystemExit(f"web assets missing: {WEB_DIR}")
     httpd = ThreadingHTTPServer((host, port), partial(Handler))
     url = f"http://{host}:{port}/"
-    print(f"provider-fetcher {__version__}  {url}")
+    print(f"provider-fetcher {__version__}")
+    print("请在浏览器里查询模型。如果浏览器没有自动打开，请访问：")
+    print(f"  {url}")
     print("收藏和知识库缓存在本机用户目录，不会上传。按 Ctrl+C 结束。")
     threading.Thread(target=_warm_catalog, daemon=True).start()
     if open_browser:
