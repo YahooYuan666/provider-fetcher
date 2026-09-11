@@ -7,7 +7,7 @@ ROOT = Path(SPECPATH)
 hidden = collect_submodules("provider_fetcher")
 
 a = Analysis(
-    [str(ROOT / "provider_fetcher" / "__main__.py")],
+    [str(ROOT / "provider_fetcher" / "launch.py")],
     pathex=[str(ROOT)],
     binaries=[],
     datas=[(str(ROOT / "provider_fetcher" / "web"), "provider_fetcher/web")],
