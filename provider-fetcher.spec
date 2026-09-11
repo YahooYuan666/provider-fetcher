@@ -31,6 +31,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=True,
+    icon=str(ROOT / "provider_fetcher" / "web" / "app.ico"),
 )
 
 coll = COLLECT(

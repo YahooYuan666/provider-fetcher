@@ -52,7 +52,7 @@ python -m pip install pyinstaller
 python -m PyInstaller --noconfirm provider-fetcher.spec
 ```
 
-产物在 `dist/provider-fetcher-portable/`。
+产物在 `dist/provider-fetcher-portable/`。GitHub Release 提供已验证的 Windows zip，解压后整夹运行。API Key 只保存在本机用户目录，不会打进 zip 或 Git 仓库。
 
 ## 本地数据
 
