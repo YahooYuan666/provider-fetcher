@@ -1,0 +1,21 @@
+[project]
+name = "provider-fetcher"
+version = "0.1.0"
+description = "Fetch provider model IDs and hinge context/limits from a local catalog."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "provider-fetcher" }]
+license = { text = "MIT" }
+
+[project.scripts]
+provider-fetcher = "provider_fetcher.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["provider_fetcher*"]
+
+[tool.setuptools.package-data]
+provider_fetcher = ["web/*"]
