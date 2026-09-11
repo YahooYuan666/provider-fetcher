@@ -75,19 +75,23 @@ def upsert_credential(
     items = load_favorites()
     existing = next((item for item in items if _same_credential(item, normalized, key)), None)
     now = _now()
+    name = (label or "").strip()
     if existing:
-        existing["label"] = (label or existing.get("label") or urlparse(normalized).netloc).strip()
+        if name:
+            existing["label"] = name
         existing["last_fetched_at"] = now
         if last_counts is not None:
             existing["last_counts"] = last_counts
         items = [existing] + [item for item in items if item.get("id") != existing.get("id")]
         return save_favorites(items)
 
+    if not name:
+        raise ValueError("FAVORITE_NAME_EMPTY")
     entry = {
         "id": str(uuid.uuid4()),
         "base_url": normalized,
         "host": urlparse(normalized).netloc,
-        "label": (label or urlparse(normalized).netloc).strip(),
+        "label": name,
         "api_key": key,
         "saved_at": now,
         "last_fetched_at": now,

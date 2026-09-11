@@ -26,15 +26,20 @@ class FavoriteCredentialTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_upsert_saves_url_and_key_once(self):
-        favorites.upsert_credential("https://api.example.com/v1", "sk-test-key-123456")
-        favorites.upsert_credential("https://api.example.com/v1/", "sk-test-key-123456")
+        favorites.upsert_credential("https://api.example.com/v1", "sk-test-key-123456", "主号")
+        favorites.upsert_credential("https://api.example.com/v1/", "sk-test-key-123456", "主号")
         items = favorites.load_favorites()
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["base_url"], "https://api.example.com/v1")
         self.assertEqual(items[0]["api_key"], "sk-test-key-123456")
+        self.assertEqual(items[0]["label"], "主号")
+
+    def test_new_favorite_requires_name(self):
+        with self.assertRaises(ValueError):
+            favorites.upsert_credential("https://api.example.com/v1", "sk-test-key-123456", "  ")
 
     def test_public_list_masks_key(self):
-        favorites.upsert_credential("https://api.example.com/v1", "sk-test-key-123456")
+        favorites.upsert_credential("https://api.example.com/v1", "sk-test-key-123456", "主号")
         public = favorites.public_favorites()
         self.assertEqual(len(public), 1)
         self.assertNotIn("api_key", public[0])
@@ -59,7 +64,7 @@ class FavoriteCredentialTests(unittest.TestCase):
         self.assertEqual(favorites.mask_api_key("abcd"), "a…d")
 
     def test_find_credential_detects_saved_combo(self):
-        favorites.upsert_credential("https://api.example.com/v1", "sk-test-key-123456")
+        favorites.upsert_credential("https://api.example.com/v1", "sk-test-key-123456", "主号")
         found = favorites.find_credential("https://api.example.com/v1/", "sk-test-key-123456")
         missing = favorites.find_credential("https://api.example.com/v1", "sk-other-key-000000")
         self.assertIsNotNone(found)

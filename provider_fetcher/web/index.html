@@ -9,11 +9,9 @@
 <body>
   <div class="app">
     <header class="hero">
-      <div>
-        <p class="eyebrow">第三方供应商补全</p>
-        <h1>Provider Fetcher</h1>
-        <p class="lede">填 Base URL 和 API Key，拉取当前密钥能用的模型 ID，再用本地知识库补上下文、最大输出和输入类型。</p>
-      </div>
+      <p class="eyebrow">第三方供应商补全</p>
+      <h1>Provider Fetcher</h1>
+      <p class="lede">填 Base URL 和 API Key，拉取当前密钥能用的模型 ID，再用本地知识库补上下文、最大输出和输入类型。</p>
       <div class="hint-card" id="apiHint">建议先尝试 Responses（/responses）；不通再改 Chat Completions 或 Anthropic Messages</div>
     </header>
 
@@ -65,13 +63,13 @@
     <section class="panel">
       <div class="section-head">
         <h2>收藏的凭据</h2>
-        <p>获取成功后可手动收藏这一组 Base URL + API Key。下次点「再查最新」会用同一组凭据向供应商重新拉取当前模型名单。</p>
+        <p>获取成功后可手动收藏并命名这一组 Base URL + API Key。下次点「再查最新」会用同一组凭据向供应商重新拉取当前模型名单。</p>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>供应商</th>
+              <th>名称</th>
               <th>Base URL</th>
               <th>API Key</th>
               <th>上次拉取</th>
@@ -86,6 +84,17 @@
     </section>
   </div>
   <div id="toast" class="toast hidden" role="status"></div>
+  <div id="nameDialog" class="dialog hidden" role="dialog" aria-modal="true" aria-labelledby="nameDialogTitle">
+    <form id="nameForm" class="dialog-card">
+      <h3 id="nameDialogTitle">给这组凭据命名</h3>
+      <p>方便以后认出收藏的是哪家供应商、哪把钥匙。</p>
+      <input id="favoriteName" name="favoriteName" required maxlength="80" placeholder="例如：3rcd 主号" autocomplete="off" />
+      <div class="dialog-actions">
+        <button type="button" id="nameCancelBtn" class="ghost">取消</button>
+        <button type="submit">保存收藏</button>
+      </div>
+    </form>
+  </div>
   <script src="/app.js"></script>
 </body>
 </html>

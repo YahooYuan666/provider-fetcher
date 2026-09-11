@@ -69,6 +69,8 @@ class Handler(SimpleHTTPRequestHandler):
                 items = touch_favorite(str(favorite.get("id") or ""), result.get("counts"))
                 result["favorites"] = [public_favorite(item) for item in items]
                 result["active_favorite_id"] = favorite.get("id")
+                result["already_saved"] = True
+                result["suggest_save"] = False
                 self._json(200, result)
                 return
             if parsed.path == "/api/favorites/remove":
