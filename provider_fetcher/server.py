@@ -105,13 +105,12 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def _warm_catalog() -> None:
-    if Catalog.load().fetched_at:
-        return
+    # 每次启动都强制刷新一遍知识库；刷新期间查询沿用本地旧缓存，失败不阻塞启动。
     try:
         Catalog.refresh()
-        print("知识库已在后台缓存完成。")
+        print("知识库已在后台更新完成。")
     except Exception as exc:  # noqa: BLE001
-        print(f"知识库后台更新失败，可稍后在页面点击更新：{exc}")
+        print(f"知识库后台更新失败，沿用本地缓存，可稍后在页面点击更新：{exc}")
 
 
 def serve(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) -> None:

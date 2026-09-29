@@ -1,5 +1,10 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+from provider_fetcher import catalog
 from provider_fetcher.catalog import Catalog
 from provider_fetcher.fetch import parse_model_list
 from provider_fetcher.service import enrich_models
@@ -222,6 +227,29 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(kinds["grok-4.6"], "chat")
         self.assertEqual(kinds["grok-imagine-image"], "image")
         self.assertEqual(kinds["custom-video"], "video")
+
+
+class RefreshCacheTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.cache = Path(self.tmp.name) / "models-dev-api.json"
+        patcher = patch.object(catalog, "catalog_cache_path", lambda: self.cache)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_refresh_writes_cache_without_tmp_leftover(self):
+        payload = {"openai": {"models": {"gpt-5.4": {"limit": {"context": 1050000}}}}}
+        response = MagicMock()
+        response.read.return_value = json.dumps(payload).encode("utf-8")
+        response.__enter__.return_value = response
+        response.__exit__.return_value = False
+        with patch.object(catalog.urllib.request, "urlopen", return_value=response):
+            envelope = Catalog.refresh()
+        data = json.loads(self.cache.read_text(encoding="utf-8"))
+        self.assertEqual(data["providers"], payload)
+        self.assertEqual(envelope["providers"], payload)
+        self.assertFalse(Path(str(self.cache) + ".tmp").exists())
 
 
 if __name__ == "__main__":

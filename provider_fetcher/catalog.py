@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -102,10 +103,12 @@ class Catalog:
             "fetched_at": datetime.now(timezone.utc).isoformat(),
             "providers": payload,
         }
-        catalog_cache_path().write_text(
-            json.dumps(envelope, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        cache = catalog_cache_path()
+        # 启动即刷新意味着查询可能与写缓存并发：先写临时文件再原子替换，
+        # 避免别的线程读到写了一半的缓存。
+        tmp = cache.with_name(cache.name + ".tmp")
+        tmp.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, cache)
         return envelope
 
     def lookup(self, model_id: str) -> CatalogHit:
