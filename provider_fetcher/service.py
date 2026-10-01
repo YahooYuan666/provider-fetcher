@@ -47,16 +47,28 @@ def _reasoning_points(hit: CatalogHit) -> int:
     return 5
 
 
+SCORE_MAX = 100
+
+
+def _spec_breakdown(hit: CatalogHit) -> dict[str, int]:
+    """规格参考分的逐项明细。
+
+    这不是模型能力评分——没有任何社区榜单或实测基准支撑，只把目录里
+    已经写明的参数规格（窗口大小、输出上限、推理档位等）按固定权重折算，
+    方便横向对照"纸面配置"。权重是本工具自行设定的，不是行业标准。
+    """
+    return {
+        "context": _context_points(hit.context),
+        "output": _output_points(hit.max_output),
+        "reasoning": _reasoning_points(hit),
+        "tool_call": 15 if hit.tool_call is True else 0,
+        "modalities": min(6, 2 * max(0, len(hit.inputs) - 1)),
+        "structured": 4 if hit.structured_output is True else 0,
+    }
+
+
 def _model_score(hit: CatalogHit) -> int:
-    """透明评分（满分 100）：上下文 40 + 最大输出 20 + 推理 15 + 工具调用 15 + 多模态 6 + 结构化 4。"""
-    return (
-        _context_points(hit.context)
-        + _output_points(hit.max_output)
-        + _reasoning_points(hit)
-        + (15 if hit.tool_call is True else 0)
-        + min(6, 2 * max(0, len(hit.inputs) - 1))
-        + (4 if hit.structured_output is True else 0)
-    )
+    return sum(_spec_breakdown(hit).values())
 
 
 def _is_free(hit: CatalogHit, model_id: str) -> bool:
@@ -99,14 +111,22 @@ def enrich_models(base_url: str, models: list[dict[str, str]], catalog: Catalog)
                 "interleaved_field": hit.interleaved_field,
                 "tool_call": hit.tool_call,
                 "free": _is_free(hit, model_id),
-                "score": _model_score(hit),
+                "spec_score": _model_score(hit),
+                "spec_breakdown": _spec_breakdown(hit),
                 "catalog_provider": hit.catalog_provider,
                 "catalog_id": hit.catalog_id,
                 "base_url": base_url,
             }
         )
     kind_rank = {"chat": 0, "image": 1, "video": 2}
-    rows.sort(key=lambda row: (kind_rank.get(row["kind"], 9), not row["free"], -row["score"], row["id"].lower()))
+    rows.sort(
+        key=lambda row: (
+            kind_rank.get(row["kind"], 9),
+            not row["free"],
+            -row["spec_score"],
+            row["id"].lower(),
+        )
+    )
     return rows
 
 

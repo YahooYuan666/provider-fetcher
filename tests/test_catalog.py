@@ -369,11 +369,23 @@ class CatalogTests(unittest.TestCase):
         self.assertTrue(by_id["big-pickle"]["free"])
         self.assertTrue(by_id["mimo-v2.5-free"]["free"])
         self.assertFalse(by_id["glm-5.3"]["free"])
-        # 免费模型置顶（组内按评分降序），非免费排后
+        # 免费模型置顶（组内按规格参考分降序），非免费排后
         self.assertEqual([row["id"] for row in rows], ["mimo-v2.5-free", "big-pickle", "glm-5.3"])
-        # 评分：1M 上下文 40 + 输出 16 + 推理满档 15 + 工具 15 + 结构化 4 = 90
-        self.assertEqual(by_id["glm-5.3"]["score"], 90)
-        self.assertTrue(0 <= by_id["big-pickle"]["score"] <= 100)
+        # 规格参考分：1M 上下文 40 + 输出 16 + 推理满档 15 + 工具 15 + 结构化 4 = 90
+        self.assertEqual(by_id["glm-5.3"]["spec_score"], 90)
+        self.assertTrue(0 <= by_id["big-pickle"]["spec_score"] <= 100)
+
+    def test_spec_score_exposes_breakdown(self):
+        # 分数必须可核对：逐项明细之和等于总分，且不超过满分
+        row = enrich_models("https://opencode.ai/zen/v1", [{"id": "glm-5.3"}], self.catalog)[0]
+        breakdown = row["spec_breakdown"]
+        self.assertEqual(sum(breakdown.values()), row["spec_score"])
+        self.assertEqual(breakdown["context"], 40)
+        self.assertEqual(breakdown["output"], 16)
+        self.assertEqual(breakdown["reasoning"], 15)
+        self.assertEqual(breakdown["tool_call"], 15)
+        self.assertEqual(breakdown["structured"], 4)
+        self.assertLessEqual(sum(breakdown.values()), 100)
 
     def test_free_matches_opencode_desktop_rule(self):
         # 官方规则：provider=opencode 且（无 cost 或 cost.input===0）。

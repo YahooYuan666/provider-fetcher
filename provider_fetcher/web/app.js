@@ -150,13 +150,32 @@ async function api(path, options) {
   return data;
 }
 
+const SPEC_PARTS = {
+  context: "上下文窗口",
+  output: "最大输出",
+  reasoning: "推理档位",
+  tool_call: "工具调用",
+  modalities: "多模态输入",
+  structured: "结构化输出",
+};
+const SPEC_MAX = { context: 40, output: 20, reasoning: 15, tool_call: 15, modalities: 6, structured: 4 };
+
+function specScoreHtml(row) {
+  if (typeof row.spec_score !== "number") return "—";
+  const parts = row.spec_breakdown || {};
+  const detail = Object.keys(SPEC_PARTS)
+    .map((key) => `${SPEC_PARTS[key]} ${parts[key] ?? 0}/${SPEC_MAX[key]}`)
+    .join(" · ");
+  return `<span title="${escapeAttr(detail)}">${row.spec_score}</span>`;
+}
+
 function sortRows(rows) {
   const kindRank = { chat: 0, image: 1, video: 2 };
   return [...rows].sort(
     (a, b) =>
       kindRank[a.kind] - kindRank[b.kind] ||
       Number(b.free) - Number(a.free) ||
-      (b.score || 0) - (a.score || 0) ||
+      (b.spec_score || 0) - (a.spec_score || 0) ||
       a.id.toLowerCase().localeCompare(b.id.toLowerCase()),
   );
 }
@@ -193,7 +212,7 @@ function renderModels() {
       <td>${inputsHtml(row.inputs)}</td>
       <td>${reasoningHtml(row)}</td>
       <td>${structuredHtml(row)}</td>
-      <td class="num">${typeof row.score === "number" ? row.score : "—"}</td>
+      <td class="num">${specScoreHtml(row)}</td>
       <td>${probeHtml(row)}</td>
       <td>${escapeHtml(row.source)}</td>
     </tr>
