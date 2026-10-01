@@ -84,7 +84,7 @@ def _get_json(url: str, api_key: str, timeout: int) -> tuple[Any, int]:
         headers={
             "Authorization": f"Bearer {api_key}",
             "Accept": "application/json",
-            "User-Agent": "provider-fetcher/0.1",
+            "User-Agent": "provider-fetcher/0.2",
         },
     )
     context = ssl.create_default_context()

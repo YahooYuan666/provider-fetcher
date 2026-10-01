@@ -20,8 +20,23 @@
 2. 只把供应商返回的模型 ID 当作现场名单。知识库不会凭空插入或删掉模型。
 3. 用 models.dev 铰上上下文、最大输出、输入模态。中转常用后缀（`-high` / `-low` / `-fast` / `-preview` / `-thinking`）会回落到官方基座条目。
 4. 获取成功后可命名并收藏 **Base URL + API Key**。下次点「再查最新」会重新向供应商拉当前名单。若这次组合尚未收藏，右下角会弹出气泡建议收藏。
+5. 一键生成 [OpenCode](https://opencode.ai) 的供应商配置文件 `opencode.json`：模型 ID、上下文窗口、最大输出、推理与工具调用支持直接写入，下载即用。
+6. 拉取 OpenCode Zen（`opencode.ai/zen/v1`，密钥可用 `public`）时自动铰链 Zen 官方目录镜像（models.dev 的 opencode 供应商），并给出 0-100 参考评分——上下文窗口 40 + 最大输出 20 + 推理档位 15 + 工具调用 15 + 多模态输入 6 + 结构化输出 4。
 
-页面字段：模型 ID、上下文、最大输出、输入、来源。生图 / 生视频模型保留在表里。API 格式只提示「建议先尝试 Responses」。
+### 关于「免费」
+
+免费判定是**纯被动**的，与 OpenCode 桌面版结果一致，只用 models.dev 目录里的 opencode 供应商（Zen 官方目录）数据，不发任何探测请求：
+
+1. **沿用桌面版的 `isFree` 规则**（源码 `packages/app/src/components/dialog-select-model.tsx`）：`provider === "opencode" && (!cost || cost.input === 0)`——没有 cost 数据也算免费，只看 input 不看 output。
+2. **再排除 `status == "deprecated"`**：Zen 下架的模型仍留在目录和公开 `/models` 里，桌面版不会列出。当前 34 个标称免费模型里有 26 个已废弃，过滤后剩下的 8 个与桌面版完全相同。
+
+免费模型置顶，并显示目录里的正式显示名（「Muse Spark 1.3 Free」对应 ID `muse-spark-1.3-contributor-free」）。
+
+### 外部能否直连（实测）
+
+「免费」不等于「能在本工具外部调用」：Zen 的免费档限制为**只能在 OpenCode 客户端内部使用**，外部 API 直连会返回 403 `OpenCode's free tier can only be used from within`。这一点目录里查不到，只有发请求才知道——所以另设「实测外部调用」按钮，对每个免费模型发一次 1-token 请求，结果写入「实测外部调用」列：外部可调用 / 仅限 OpenCode 客户端 / 上游已下架 / 需要有效 API Key / 服务端错误。结果存在本机，重启后仍在。探测带 3 秒间隔、单次上限 40 个模型，避免触发限流。
+
+页面字段：模型 ID、上下文窗口、最大输出、输入类型、推理等级、结构化输出、来源。推理等级列显示该模型的推理等级（如 `low → medium → high`）及推理参数提示；结构化输出列标记是否支持结构化输出。生图 / 生视频模型保留在表里。API 格式只提示「建议先尝试 Responses」。
 
 ## 源码运行
 
@@ -67,6 +82,21 @@ python -m PyInstaller --noconfirm provider-fetcher.spec
 每次启动会在后台自动刷新一遍知识库；更新失败（比如离线）就沿用本地缓存，也可以随时在页面里点「更新知识库」。
 
 知识库未命中时，上下文和最大输出留空。供应商别名如果目录里没有对应基座，不会猜测。
+
+## 生成 OpenCode 配置
+
+模型列表上方点「生成 OpenCode 配置」，下载 `opencode.json`，放到 OpenCode 的全局配置路径。OpenCode 三端都读用户主目录下的 `.config/opencode/`（源码用 `xdg-basedir` 解析，无平台特判）：
+
+| 环境 | 路径 |
+| --- | --- |
+| Windows | `%USERPROFILE%\.config\opencode\opencode.json` |
+| WSL | `~/.config/opencode/opencode.json`（Windows 侧经 `\\wsl.localhost\<发行版>\home\<用户名>\...` 访问，`wsl -l` 查发行版名） |
+| macOS | `~/.config/opencode/opencode.json` |
+
+- 设了 `XDG_CONFIG_HOME` 或 `OPENCODE_CONFIG_DIR` 时路径随之改变；放进项目根目录的 `opencode.json` 会合并覆盖全局配置。
+- API Key 默认明文写入导出文件（仅存本机，别提交别分享）；不想落盘就改用 `opencode auth login`，然后把 `options.apiKey` 删掉。
+- 只导出对话模型；目录未命中的模型保持现场 ID 写入，但上下文或最大输出缺一个时不带 `limit` 字段（OpenCode schema 里两者必填）。
+- 目录声明了推理强度档位的模型会写入 OpenCode `variants`（每个档位对应 `reasoningEffort`），在 OpenCode 里用 `供应商/模型#档位` 选择强度，例如 `my-relay/grok-4.7#xhigh`；不带 `#` 跑 API 默认档。
 
 ## 测试
 

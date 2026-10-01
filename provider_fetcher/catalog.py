@@ -47,6 +47,14 @@ class CatalogHit:
     kind: str
     matched: bool
     notes: list[str]
+    structured_output: bool | None = None
+    reasoning_capable: bool | None = None
+    reasoning_levels: list[str] | None = None
+    reasoning_budget_min: int | None = None
+    interleaved_field: str | None = None
+    tool_call: bool | None = None
+    cost: dict[str, Any] | None = None
+    status: str | None = None
 
 
 class Catalog:
@@ -93,7 +101,7 @@ class Catalog:
     def refresh() -> dict[str, Any]:
         request = urllib.request.Request(
             CATALOG_URL,
-            headers={"User-Agent": "provider-fetcher/0.1"},
+            headers={"User-Agent": "provider-fetcher/0.2"},
         )
         with urllib.request.urlopen(request, timeout=60) as response:
             payload = json.loads(response.read().decode("utf-8"))
@@ -111,10 +119,10 @@ class Catalog:
         os.replace(tmp, cache)
         return envelope
 
-    def lookup(self, model_id: str) -> CatalogHit:
+    def lookup(self, model_id: str, provider_hint: str | None = None) -> CatalogHit:
         notes: list[str] = []
         records = self._collect(model_id)
-        chosen = _prefer(records, model_id)
+        chosen = _prefer(records, model_id, provider_hint)
         if not chosen:
             kind = infer_kind(model_id, [], [])
             return CatalogHit(
@@ -128,10 +136,18 @@ class Catalog:
                 kind=kind,
                 matched=False,
                 notes=["目录未命中，上下文和最大输出请手填"],
+                structured_output=None,
+                reasoning_capable=None,
+                reasoning_levels=[],
+                reasoning_budget_min=None,
+                interleaved_field=None,
+                tool_call=None,
+                cost=None,
+                status=None,
             )
 
         provider_id, catalog_id, model = chosen
-        if provider_id not in OFFICIAL_PROVIDERS:
+        if provider_id not in OFFICIAL_PROVIDERS and provider_id != provider_hint:
             notes.append("无官方实验室条目，使用中转副本")
         live_norm = normalize_model_id(model_id)
         catalog_norm = normalize_model_id(catalog_id)
@@ -147,6 +163,7 @@ class Catalog:
         kind = infer_kind(model_id, inputs, outputs)
         if kind == "chat" and not inputs:
             inputs = ["text"]
+        capable, levels, budget_min, inter_field = _reasoning_info(model)
         source = f"现场 ID + models.dev/{provider_id}"
         return CatalogHit(
             context=context,
@@ -159,6 +176,14 @@ class Catalog:
             kind=kind,
             matched=True,
             notes=notes,
+            structured_output=_bool_or_none(model.get("structured_output")),
+            reasoning_capable=capable,
+            reasoning_levels=levels,
+            reasoning_budget_min=budget_min,
+            interleaved_field=inter_field,
+            tool_call=_bool_or_none(model.get("tool_call")),
+            cost=model.get("cost") if isinstance(model.get("cost"), dict) else None,
+            status=str(model.get("status")) if model.get("status") else None,
         )
 
     def _collect(self, model_id: str) -> list[tuple[str, str, dict[str, Any]]]:
@@ -171,6 +196,31 @@ class Catalog:
                     seen.add(key)
                     out.append(record)
         return out
+
+
+def _bool_or_none(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    return None
+
+
+def _reasoning_info(model: dict[str, Any]) -> tuple[bool | None, list[str], int | None, str | None]:
+    reasoning = model.get("reasoning")
+    capable = reasoning if isinstance(reasoning, bool) else None
+    levels: list[str] = []
+    budget_min: int | None = None
+    for option in model.get("reasoning_options") or []:
+        if not isinstance(option, dict):
+            continue
+        if option.get("type") == "effort" and isinstance(option.get("values"), list):
+            levels = [str(item) for item in option["values"] if isinstance(item, str)]
+        elif option.get("type") == "budget_tokens":
+            budget_min = _positive_int(option.get("min"))
+    interleaved = model.get("interleaved")
+    inter_field = None
+    if isinstance(interleaved, dict):
+        inter_field = str(interleaved.get("field") or "") or None
+    return capable, levels, budget_min, inter_field
 
 
 def infer_kind(model_id: str, inputs: list[str], outputs: list[str]) -> str:
@@ -186,9 +236,16 @@ def infer_kind(model_id: str, inputs: list[str], outputs: list[str]) -> str:
 def _prefer(
     records: list[tuple[str, str, dict[str, Any]]],
     model_id: str,
+    provider_hint: str | None = None,
 ) -> tuple[str, str, dict[str, Any]] | None:
-    scored = [( _score(record, model_id), record) for record in records]
+    scored = [(_score(record, model_id), record) for record in records]
     scored = [item for item in scored if item[0] > 0]
+    if provider_hint:
+        # 供应商提示（如 opencode.ai/zen 对应目录里的 opencode 官方镜像）压过一切副本
+        scored = [
+            (score + (200 if record[0] == provider_hint else 0), record)
+            for score, record in scored
+        ]
     if not scored:
         return None
     scored.sort(

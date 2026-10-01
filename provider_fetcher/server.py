@@ -20,6 +20,9 @@ from .favorites import (
     upsert_credential,
 )
 from .service import bootstrap_state, fetch_and_enrich
+from .opencode import OPENCODE_PATHS, build_opencode_config
+from .paths import zen_probe_path
+from .zen_probe import probe_models
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 
@@ -30,6 +33,12 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
         return
+
+    def end_headers(self) -> None:  # noqa: N802
+        if not self.path.startswith("/api/"):
+            # 页面改版必须立刻生效：允许缓存但每次回源校验（未变更返回 304）。
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
@@ -53,6 +62,29 @@ class Handler(SimpleHTTPRequestHandler):
                 Catalog.refresh()
                 catalog = Catalog.load()
                 self._json(200, {"ok": True, "catalog_fetched_at": catalog.fetched_at})
+                return
+            if parsed.path == "/api/zen/verify":
+                models = body.get("models")
+                report = probe_models(
+                    str(body.get("base_url") or ""),
+                    str(body.get("api_key") or ""),
+                    [m for m in models if isinstance(m, str)] if isinstance(models, list) else [],
+                )
+                zen_probe_path().write_text(
+                    json.dumps(report, ensure_ascii=False), encoding="utf-8"
+                )
+                self._json(200, {"ok": True, **report})
+                return
+            if parsed.path == "/api/export/opencode":
+                config = build_opencode_config(
+                    str(body.get("base_url") or ""),
+                    str(body.get("api_key") or ""),
+                    body.get("models") if isinstance(body.get("models"), list) else [],
+                )
+                self._json(
+                    200,
+                    {"ok": True, "filename": "opencode.json", "config": config, "paths": OPENCODE_PATHS},
+                )
                 return
             if parsed.path == "/api/favorites":
                 items = upsert_credential(

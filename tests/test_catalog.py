@@ -80,6 +80,11 @@ SAMPLE = {
                 "id": "gpt-5.3-codex",
                 "limit": {"context": 400000, "output": 128000},
                 "modalities": {"input": ["text", "image", "pdf"], "output": ["text"]},
+                "structured_output": True,
+                "reasoning": True,
+                "reasoning_options": [
+                    {"type": "effort", "values": ["none", "low", "medium", "high", "xhigh"]}
+                ],
             },
             "gpt-5.3-codex-spark": {
                 "id": "gpt-5.3-codex-spark",
@@ -95,6 +100,25 @@ SAMPLE = {
                 "id": "claude-opus-4-6",
                 "limit": {"context": 1000000, "output": 128000},
                 "modalities": {"input": ["text", "image", "pdf"], "output": ["text"]},
+                "structured_output": True,
+                "reasoning": True,
+                "reasoning_options": [
+                    {"type": "effort", "values": ["low", "medium", "high", "max"]},
+                    {"type": "budget_tokens", "min": 1024},
+                ],
+            }
+        },
+    },
+    "zai": {
+        "id": "zai",
+        "models": {
+            "glm-5.2": {
+                "id": "glm-5.2",
+                "limit": {"context": 204800, "output": 131072},
+                "modalities": {"input": ["text"], "output": ["text"]},
+                "reasoning": True,
+                "reasoning_options": [{"type": "effort", "values": ["high", "max"]}],
+                "interleaved": {"field": "reasoning_content"},
             }
         },
     },
@@ -136,6 +160,67 @@ SAMPLE = {
                 "limit": {"context": 131072, "output": 131072},
                 "modalities": {"input": ["text"], "output": ["text"]},
             }
+        },
+    },
+    "302ai": {
+        "id": "302ai",
+        "models": {
+            "glm-5.3": {
+                "id": "glm-5.3",
+                "limit": {"context": 1000000, "output": 131072},
+                "modalities": {"input": ["text"], "output": ["text"]},
+                "reasoning": True,
+                "reasoning_options": [{"type": "effort", "values": ["low", "high", "max"]}],
+                "interleaved": {"field": "reasoning_content"},
+            }
+        },
+    },
+    "opencode": {
+        "id": "opencode",
+        "models": {
+            "big-pickle": {
+                "id": "big-pickle",
+                "limit": {"context": 200000, "input": 160000, "output": 32000},
+                "modalities": {"input": ["text"], "output": ["text"]},
+                "reasoning": True,
+                "cost": {"input": 0, "output": 0},
+            },
+            "glm-5.3": {
+                "id": "glm-5.3",
+                "limit": {"context": 1000000, "output": 131072},
+                "modalities": {"input": ["text"], "output": ["text"]},
+                "reasoning": True,
+                "reasoning_options": [{"type": "effort", "values": ["low", "high", "max"]}],
+                "interleaved": {"field": "reasoning_content"},
+                "tool_call": True,
+                "structured_output": True,
+                "cost": {"input": 1.4, "output": 4.4},
+            },
+            "mimo-v2.5-free": {
+                "id": "mimo-v2.5-free",
+                "limit": {"context": 200000, "output": 32000},
+                "modalities": {"input": ["text", "image", "audio", "video"], "output": ["text"]},
+                "reasoning": True,
+                "cost": {"input": 0, "output": 0},
+            },
+            "no-cost-model": {
+                "id": "no-cost-model",
+                "limit": {"context": 128000, "output": 8192},
+                "modalities": {"input": ["text"], "output": ["text"]},
+            },
+            "output-only-nonzero-free": {
+                "id": "output-only-nonzero-free",
+                "limit": {"context": 128000, "output": 8192},
+                "modalities": {"input": ["text"], "output": ["text"]},
+                "cost": {"input": 0, "output": 3},
+            },
+            "retired-free-model": {
+                "id": "retired-free-model",
+                "limit": {"context": 200000, "output": 32000},
+                "modalities": {"input": ["text"], "output": ["text"]},
+                "cost": {"input": 0, "output": 0},
+                "status": "deprecated",
+            },
         },
     },
 }
@@ -217,6 +302,52 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(hit.catalog_id, "gpt-5.3-codex-spark")
         self.assertEqual(hit.context, 128000)
 
+    def test_reasoning_levels_and_structured_output_extracted(self):
+        hit = self.catalog.lookup("gpt-5.3-codex")
+        self.assertEqual(hit.reasoning_levels, ["none", "low", "medium", "high", "xhigh"])
+        self.assertIs(hit.reasoning_capable, True)
+        self.assertIs(hit.structured_output, True)
+        self.assertIsNone(hit.reasoning_budget_min)
+        self.assertIsNone(hit.interleaved_field)
+
+    def test_budget_tokens_extracted_alongside_effort(self):
+        hit = self.catalog.lookup("claude-opus-4-6")
+        self.assertEqual(hit.reasoning_levels, ["low", "medium", "high", "max"])
+        self.assertEqual(hit.reasoning_budget_min, 1024)
+
+    def test_interleaved_field_extracted(self):
+        hit = self.catalog.lookup("glm-5.2")
+        self.assertEqual(hit.reasoning_levels, ["high", "max"])
+        self.assertEqual(hit.interleaved_field, "reasoning_content")
+
+    def test_missing_reasoning_fields_stay_unknown(self):
+        hit = self.catalog.lookup("grok-3-mini")
+        self.assertEqual(hit.reasoning_levels, [])
+        self.assertIsNone(hit.reasoning_capable)
+        self.assertIsNone(hit.structured_output)
+
+    def test_unmatched_has_empty_reasoning(self):
+        hit = self.catalog.lookup("my-alias-gpt")
+        self.assertEqual(hit.reasoning_levels, [])
+        self.assertIsNone(hit.reasoning_capable)
+        self.assertIsNone(hit.structured_output)
+
+    def test_provider_hint_prefers_official_mirror(self):
+        # 无提示时 302ai 副本按字母序胜出；提示 opencode 后官方镜像压过一切副本
+        plain = self.catalog.lookup("glm-5.3")
+        self.assertEqual(plain.catalog_provider, "302ai")
+        hinted = self.catalog.lookup("glm-5.3", provider_hint="opencode")
+        self.assertEqual(hinted.catalog_provider, "opencode")
+        self.assertEqual(hinted.cost, {"input": 1.4, "output": 4.4})
+        self.assertIs(hinted.tool_call, True)
+        # 提示命中的是网关自己的目录，不再标注"中转副本"
+        self.assertNotIn("无官方实验室条目", " ".join(hinted.notes))
+        self.assertNotEqual(hinted.catalog_provider, plain.catalog_provider)
+
+    def test_hint_ignores_absent_provider(self):
+        hit = self.catalog.lookup("grok-3-mini", provider_hint="opencode")
+        self.assertEqual(hit.catalog_provider, "xai")
+
     def test_enrich_keeps_video_and_image(self):
         rows = enrich_models(
             "https://api.x.ai/v1",
@@ -227,6 +358,52 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(kinds["grok-4.6"], "chat")
         self.assertEqual(kinds["grok-imagine-image"], "image")
         self.assertEqual(kinds["custom-video"], "video")
+
+    def test_zen_rows_free_first_with_score(self):
+        rows = enrich_models(
+            "https://opencode.ai/zen/v1",
+            [{"id": "glm-5.3"}, {"id": "big-pickle"}, {"id": "mimo-v2.5-free"}],
+            self.catalog,
+        )
+        by_id = {row["id"]: row for row in rows}
+        self.assertTrue(by_id["big-pickle"]["free"])
+        self.assertTrue(by_id["mimo-v2.5-free"]["free"])
+        self.assertFalse(by_id["glm-5.3"]["free"])
+        # 免费模型置顶（组内按评分降序），非免费排后
+        self.assertEqual([row["id"] for row in rows], ["mimo-v2.5-free", "big-pickle", "glm-5.3"])
+        # 评分：1M 上下文 40 + 输出 16 + 推理满档 15 + 工具 15 + 结构化 4 = 90
+        self.assertEqual(by_id["glm-5.3"]["score"], 90)
+        self.assertTrue(0 <= by_id["big-pickle"]["score"] <= 100)
+
+    def test_free_matches_opencode_desktop_rule(self):
+        # 官方规则：provider=opencode 且（无 cost 或 cost.input===0）。
+        # 输出价非 0 也算免费；完全没有 cost 字段也算免费；-free 后缀不算依据。
+        rows = enrich_models(
+            "https://opencode.ai/zen/v1",
+            [
+                {"id": "big-pickle"},
+                {"id": "glm-5.3"},
+                {"id": "mimo-v2.5-free"},
+                {"id": "grok-4.6"},
+                {"id": "no-cost-model"},
+                {"id": "output-only-nonzero-free"},
+                {"id": "retired-free-model"},
+            ],
+            self.catalog,
+        )
+        by_id = {row["id"]: row for row in rows}
+        # cost {input:0,output:0} -> 免费
+        self.assertTrue(by_id["big-pickle"]["free"])
+        # cost {input:1.4,output:4.4} -> 不免费
+        self.assertFalse(by_id["glm-5.3"]["free"])
+        # 非 opencode 目录来源（xai 官方条目）即使有推理能力也不免费
+        self.assertFalse(by_id["grok-4.6"]["free"])
+        # 官方规则把「没有 cost 字段」也当免费
+        self.assertTrue(by_id["no-cost-model"]["free"])
+        # 官方规则只看 input，output 非 0 仍是免费
+        self.assertTrue(by_id["output-only-nonzero-free"]["free"])
+        # 目录标记 deprecated 的免费模型不再算免费（Zen 已下架，桌面版也不列）
+        self.assertFalse(by_id["retired-free-model"]["free"])
 
 
 class RefreshCacheTests(unittest.TestCase):

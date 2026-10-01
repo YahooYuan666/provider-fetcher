@@ -1,0 +1,20 @@
+{
+  "key": "graphite_blue",
+  "mode": "dark",
+  "name": "石墨蓝 Graphite Blue",
+  "tokens": {
+    "bg": "#101216",
+    "panel": "#191D24",
+    "sidebar": "#0B0D11",
+    "log_bg": "#0B0D11",
+    "text": "#ECEEF2",
+    "muted": "#A3ACBA",
+    "border": "#6B7382",
+    "primary": "#8FA9F2",
+    "primary_hover": "#A5BCF6",
+    "primary_text": "#0D1220",
+    "success": "#93D6A5",
+    "warning": "#E8C57C",
+    "error": "#F09A9A"
+  }
+}

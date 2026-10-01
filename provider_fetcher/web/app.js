@@ -5,6 +5,7 @@ const state = {
   query: "",
   lastFetch: null,
   lastCredential: null,
+  probe: {},
 };
 
 const els = {
@@ -25,9 +26,16 @@ const els = {
   nameForm: document.getElementById("nameForm"),
   favoriteName: document.getElementById("favoriteName"),
   nameCancelBtn: document.getElementById("nameCancelBtn"),
+  opencodeBtn: document.getElementById("opencodeBtn"),
+  zenVerifyBtn: document.getElementById("zenVerifyBtn"),
+  opencodeDialog: document.getElementById("opencodeDialog"),
+  opencodePaths: document.getElementById("opencodePaths"),
+  opencodeCancelBtn: document.getElementById("opencodeCancelBtn"),
+  opencodeDownloadBtn: document.getElementById("opencodeDownloadBtn"),
 };
 
 let toastTimer = 0;
+let opencodeConfig = null;
 
 function formatNumber(value) {
   return typeof value === "number" ? value.toLocaleString("en-US") : "—";
@@ -35,7 +43,41 @@ function formatNumber(value) {
 
 function inputsHtml(inputs) {
   if (!inputs || !inputs.length) return "—";
-  return inputs.map((item) => `<span class="badge">${item}</span>`).join("");
+  return inputs.map((item) => `<span class="badge">${escapeHtml(item)}</span>`).join("");
+}
+
+function reasoningHtml(row) {
+  const levels = row.reasoning_levels || [];
+  if (levels.length) {
+    const extras = [];
+    if (row.reasoning_budget_min) extras.push(`budget_tokens ≥ ${row.reasoning_budget_min}`);
+    if (row.interleaved_field) extras.push(`interleaved: ${row.interleaved_field}`);
+    const extraLine = extras.length ? `<div class="kind">${escapeHtml(extras.join(" · "))}</div>` : "";
+    return `<div class="levels">${escapeHtml(levels.join(" → "))}</div>${extraLine}`;
+  }
+  if (row.reasoning_capable === false) return `<span class="muted-cell">不支持</span>`;
+  return "—";
+}
+
+function structuredHtml(row) {
+  if (row.structured_output === true) return `<span class="yes">✓</span>`;
+  if (row.structured_output === false) return `<span class="no">✗</span>`;
+  return "—";
+}
+
+function renderSkeleton() {
+  els.resultPanel.classList.remove("hidden");
+  els.modelRows.innerHTML = Array.from({ length: 6 }, () => `
+    <tr>
+      <td class="id-cell"><div class="skel"></div></td>
+      <td><div class="skel"></div></td>
+      <td><div class="skel"></div></td>
+      <td><div class="skel"></div></td>
+      <td><div class="skel"></div></td>
+      <td><div class="skel"></div></td>
+      <td><div class="skel"></div></td>
+    </tr>
+  `).join("");
 }
 
 function kindLabel(kind) {
@@ -108,26 +150,51 @@ async function api(path, options) {
   return data;
 }
 
+function sortRows(rows) {
+  const kindRank = { chat: 0, image: 1, video: 2 };
+  return [...rows].sort(
+    (a, b) =>
+      kindRank[a.kind] - kindRank[b.kind] ||
+      Number(b.free) - Number(a.free) ||
+      (b.score || 0) - (a.score || 0) ||
+      a.id.toLowerCase().localeCompare(b.id.toLowerCase()),
+  );
+}
+
+function probeHtml(row) {
+  const result = state.probe[row.id];
+  if (!result) return row.free ? `<span class="muted-cell">未实测</span>` : `<span class="muted-cell">—</span>`;
+  const tone = result.status === "ok" ? "yes" : result.status === "unknown" ? "muted-cell" : "bad";
+  const detail = result.message ? ` title="${escapeAttr(result.message)}"` : "";
+  return `<span class="${tone}"${detail}>${escapeHtml(result.label)}</span>`;
+}
+
 function renderModels() {
-  const rows = state.models.filter((row) => {
+  els.opencodeBtn.disabled = !state.models.length;
+  els.zenVerifyBtn.disabled = !state.models.some((row) => row.free);
+  const rows = sortRows(state.models.filter((row) => {
     if (state.filter !== "all" && row.kind !== state.filter) return false;
     if (state.query && !row.id.toLowerCase().includes(state.query)) return false;
     return true;
-  });
+  }));
   if (!rows.length) {
-    els.modelRows.innerHTML = `<tr><td colspan="5" class="empty">没有匹配的模型。</td></tr>`;
+    els.modelRows.innerHTML = `<tr><td colspan="9" class="empty">没有匹配的模型。</td></tr>`;
     return;
   }
   els.modelRows.innerHTML = rows.map((row) => `
-    <tr>
-      <td>
-        <div>${escapeHtml(row.id)}</div>
+    <tr${row.free ? ' class="row-free"' : ""}>
+      <td class="id-cell">
+        <div>${escapeHtml(row.id)}${row.free ? ' <span class="free-badge">免费</span>' : ""}</div>
         <div class="kind">${kindLabel(row.kind)}</div>
         ${row.notes?.length ? `<div class="note">${escapeHtml(row.notes.join("；"))}</div>` : ""}
       </td>
-      <td>${formatNumber(row.context)}</td>
-      <td>${formatNumber(row.max_output)}</td>
+      <td class="num">${formatNumber(row.context)}</td>
+      <td class="num">${formatNumber(row.max_output)}</td>
       <td>${inputsHtml(row.inputs)}</td>
+      <td>${reasoningHtml(row)}</td>
+      <td>${structuredHtml(row)}</td>
+      <td class="num">${typeof row.score === "number" ? row.score : "—"}</td>
+      <td>${probeHtml(row)}</td>
       <td>${escapeHtml(row.source)}</td>
     </tr>
   `).join("");
@@ -140,23 +207,25 @@ function countsText(counts) {
 
 function renderFavorites() {
   if (!state.favorites.length) {
-    els.favoriteRows.innerHTML = `<tr><td colspan="5" class="empty">还没有收藏凭据。</td></tr>`;
+    els.favoriteRows.innerHTML = `<p class="empty">还没有收藏凭据。</p>`;
     return;
   }
   els.favoriteRows.innerHTML = state.favorites.map((row) => `
-    <tr>
-      <td>${escapeHtml(row.label || row.host || "")}</td>
-      <td>${escapeHtml(row.base_url || "")}</td>
-      <td>${escapeHtml(row.api_key_masked || "")}</td>
-      <td>
+    <article class="fav-card">
+      <div class="fav-head">
+        <span class="fav-name">${escapeHtml(row.label || row.host || "")}</span>
+        <span class="badge">${escapeHtml(row.api_key_masked || "")}</span>
+      </div>
+      <div class="fav-url">${escapeHtml(row.base_url || "")}</div>
+      <div class="fav-meta">
         <div>${escapeHtml(row.last_fetched_at || row.saved_at || "")}</div>
         <div class="kind">${escapeHtml(countsText(row.last_counts))}</div>
-      </td>
-      <td>
-        <button type="button" class="ghost" data-refetch="${escapeAttr(row.id)}">再查最新</button>
-        <button type="button" class="link" data-unfav="${escapeAttr(row.id)}">移除</button>
-      </td>
-    </tr>
+      </div>
+      <div class="fav-actions">
+        <button type="button" data-refetch="${escapeAttr(row.id)}">再查最新</button>
+        <button type="button" class="ghost" data-unfav="${escapeAttr(row.id)}">移除</button>
+      </div>
+    </article>
   `).join("");
 }
 
@@ -211,6 +280,45 @@ function applyFetchResult(data, options = {}) {
   else hideToast();
 }
 
+function renderOpencodePaths(paths) {
+  const items = paths.items.map((item) => `
+    <div class="path-item">
+      <div class="path-label">${escapeHtml(item.label)}</div>
+      <div class="path-value">${escapeHtml(item.value)}</div>
+      <div class="kind">${escapeHtml(item.note)}</div>
+    </div>
+  `).join("");
+  const tips = paths.tips.map((tip) => `<div class="kind">${escapeHtml(tip)}</div>`).join("");
+  els.opencodePaths.innerHTML = items + tips;
+}
+
+async function generateOpencodeConfig() {
+  const cred = credentialToSave();
+  const data = await api("/api/export/opencode", {
+    method: "POST",
+    body: JSON.stringify({ base_url: cred.base_url, api_key: cred.api_key, models: state.models }),
+  });
+  renderOpencodePaths(data.paths);
+  els.opencodeDialog.dataset.filename = data.filename || "opencode.json";
+  opencodeConfig = data.config;
+  els.opencodeDialog.classList.remove("hidden");
+}
+
+function downloadOpencodeConfig() {
+  if (!opencodeConfig) return;
+  const blob = new Blob([JSON.stringify(opencodeConfig, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = els.opencodeDialog.dataset.filename || "opencode.json";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  els.opencodeDialog.classList.add("hidden");
+  setStatus("opencode.json 已下载。放到弹窗里列出的任一路径，重启 opencode 生效。");
+}
+
 async function saveFavorite(label) {
   const cred = credentialToSave();
   const data = await api("/api/favorites", {
@@ -231,23 +339,35 @@ async function saveFavorite(label) {
   setStatus(`已收藏「${label}」。下次可直接点「再查最新」，向供应商拉取当前模型名单。`);
 }
 
-els.form.addEventListener("submit", async (event) => {
-  event.preventDefault();
+async function fetchModels({ suggestSave = true } = {}) {
   els.fetchBtn.disabled = true;
+  els.fetchBtn.classList.add("loading");
   setStatus("正在向供应商拉取模型列表…");
+  renderSkeleton();
   const credential = currentCredential();
   try {
     const data = await api("/api/fetch", {
       method: "POST",
       body: JSON.stringify(credential),
     });
-    applyFetchResult(data, { suggestSave: true, credential });
+    applyFetchResult(data, { suggestSave, credential });
   } catch (error) {
     setStatus(`获取失败：${error.message}`);
+    if (!state.models.length) {
+      els.resultPanel.classList.add("hidden");
+    } else {
+      renderModels();
+    }
   } finally {
     els.fetchBtn.disabled = false;
+    els.fetchBtn.classList.remove("loading");
     els.saveFavoriteBtn.disabled = !canSaveFavorite();
   }
+}
+
+els.form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await fetchModels({ suggestSave: true });
 });
 
 els.saveFavoriteBtn.addEventListener("click", () => {
@@ -256,6 +376,7 @@ els.saveFavoriteBtn.addEventListener("click", () => {
 
 els.refreshCatalogBtn.addEventListener("click", async () => {
   els.refreshCatalogBtn.disabled = true;
+  els.refreshCatalogBtn.classList.add("loading");
   setStatus("正在更新 models.dev 知识库…");
   try {
     const data = await api("/api/catalog/refresh", { method: "POST", body: "{}" });
@@ -264,6 +385,7 @@ els.refreshCatalogBtn.addEventListener("click", async () => {
     setStatus(`知识库更新失败：${error.message}`);
   } finally {
     els.refreshCatalogBtn.disabled = false;
+    els.refreshCatalogBtn.classList.remove("loading");
   }
 });
 
@@ -310,6 +432,40 @@ els.nameForm.addEventListener("submit", async (event) => {
   }
 });
 
+els.zenVerifyBtn.addEventListener("click", async () => {
+  const targets = state.models.filter((row) => row.free).map((row) => row.id);
+  if (!targets.length) return;
+  const cred = credentialToSave();
+  els.zenVerifyBtn.disabled = true;
+  els.zenVerifyBtn.classList.add("loading");
+  setStatus(`正在实测 ${targets.length} 个免费模型能否在本工具外部直接调用，每个模型发一次 1-token 请求…`);
+  try {
+    const data = await api("/api/zen/verify", {
+      method: "POST",
+      body: JSON.stringify({ base_url: cred.base_url, api_key: cred.api_key, models: targets }),
+    });
+    state.probe = data.results || {};
+    const direct = Object.values(state.probe).filter((item) => item.usable).length;
+    const clientOnly = Object.values(state.probe).filter((item) => item.status === "client_only").length;
+    setStatus(`实测完成：${data.probed} 个免费模型中，${direct} 个外部可调用、${clientOnly} 个仅限在 OpenCode 客户端内使用。结果存在本机。`);
+    renderModels();
+  } catch (error) {
+    setStatus(`实测失败：${error.message}`);
+  } finally {
+    els.zenVerifyBtn.classList.remove("loading");
+    els.zenVerifyBtn.disabled = !state.models.some((row) => row.free);
+  }
+});
+
+els.opencodeBtn.addEventListener("click", () => {
+  generateOpencodeConfig().catch((error) => setStatus(`生成失败：${error.message}`));
+});
+els.opencodeCancelBtn.addEventListener("click", () => els.opencodeDialog.classList.add("hidden"));
+els.opencodeDialog.addEventListener("click", (event) => {
+  if (event.target === els.opencodeDialog) els.opencodeDialog.classList.add("hidden");
+});
+els.opencodeDownloadBtn.addEventListener("click", downloadOpencodeConfig);
+
 els.favoriteRows.addEventListener("click", async (event) => {
   const refetch = event.target.closest("button[data-refetch]");
   if (refetch) {
@@ -347,10 +503,11 @@ els.favoriteRows.addEventListener("click", async (event) => {
     const data = await api("/api/state");
     els.apiHint.textContent = data.api_format_hint || els.apiHint.textContent;
     applyFavorites(data.favorites || []);
+    if (data.zen_probe?.results) state.probe = data.zen_probe.results;
     if (data.last_fetch?.models) {
+      // 先把上次的模型秒显出来，随后自动查询会被新结果覆盖
       state.models = data.last_fetch.models;
       state.lastFetch = data.last_fetch;
-      els.baseUrl.value = data.last_fetch.base_url || "";
       els.resultPanel.classList.remove("hidden");
       renderModels();
     }
@@ -360,4 +517,6 @@ els.favoriteRows.addEventListener("click", async (event) => {
   } catch (error) {
     setStatus(`启动失败：${error.message}`);
   }
+  // 启动即用默认凭据（OpenCode Zen + public）查询一次；不做实测探勘、不弹收藏建议
+  await fetchModels({ suggestSave: false });
 })();

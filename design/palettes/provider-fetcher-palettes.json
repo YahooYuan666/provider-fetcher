@@ -1,0 +1,73 @@
+{
+  "project": "Provider Fetcher",
+  "surface": "本地模型参数查询工具（深色高密度数据界面）",
+  "semantics": "主操作=获取模型；次操作=收藏凭据/再查最新/更新知识库；危险操作=移除凭据；状态=知识库命中/未命中留空/不支持/离线降级。用户明示约束：克制、不花哨、贴合本地工具气质，排除画廊风",
+  "directions": [
+    {
+      "name": "石墨蓝 Graphite Blue",
+      "intent": "现有品牌蓝的收敛演化：冷石墨底、低饱和长春花蓝主按钮，安静克制，延续既有 logo 认知，长时间扫表不刺激。",
+      "source_basis": ["现有 provider-fetcher 令牌族", "GitHub Primer dark 层级实践", "WCAG 2.2 AA"],
+      "tokens": {
+        "canvas": "#101216",
+        "surface": "#191D24",
+        "surface_muted": "#232833",
+        "text": "#ECEEF2",
+        "text_muted": "#A3ACBA",
+        "border": "#6B7382",
+        "primary": "#8FA9F2",
+        "on_primary": "#0D1220",
+        "accent": "#86C7E8",
+        "on_accent": "#0B141A",
+        "success": "#93D6A5",
+        "warning": "#E8C57C",
+        "danger": "#F09A9A",
+        "info": "#9BB8DC",
+        "focus": "#B9C9FF"
+      }
+    },
+    {
+      "name": "暖砂夜 Warm Night",
+      "intent": "暖炭底配琥珀铜主按钮，老式终端工具的血统，亲和低调，与花哨的 AI 画廊风完全反向。",
+      "source_basis": ["Gruvbox 色相词汇（降饱和重验）", "Radix 暖色阶", "WCAG 2.2 AA"],
+      "tokens": {
+        "canvas": "#141210",
+        "surface": "#1E1B17",
+        "surface_muted": "#2A261F",
+        "text": "#F0EDE6",
+        "text_muted": "#B3AA9B",
+        "border": "#786F5F",
+        "primary": "#D9924E",
+        "on_primary": "#241503",
+        "accent": "#8FBF9E",
+        "on_accent": "#0E1A12",
+        "success": "#A3C99A",
+        "warning": "#E8C57C",
+        "danger": "#F0938B",
+        "info": "#9FB0C8",
+        "focus": "#F2CE93"
+      }
+    },
+    {
+      "name": "青瓷 Celadon Teal",
+      "intent": "冷灰绿底配青瓷主按钮，平静素净，对比度余量三个方向里最大，刻意避开 AI 产品的蓝紫惯性感。",
+      "source_basis": ["Everforest 材质感（降饱和重验）", "Open Color 青绿阶", "WCAG 2.2 AA"],
+      "tokens": {
+        "canvas": "#0F1413",
+        "surface": "#17201D",
+        "surface_muted": "#222D28",
+        "text": "#EAF0EC",
+        "text_muted": "#A3B3A9",
+        "border": "#6E8379",
+        "primary": "#7FD8C2",
+        "on_primary": "#08201A",
+        "accent": "#8FA9F2",
+        "on_accent": "#0D1220",
+        "success": "#A5D68F",
+        "warning": "#E8C57C",
+        "danger": "#F0938B",
+        "info": "#86B7D6",
+        "focus": "#A8EBDA"
+      }
+    }
+  ]
+}

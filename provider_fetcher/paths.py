@@ -31,3 +31,7 @@ def favorites_path() -> Path:
 
 def last_fetch_path() -> Path:
     return user_data_dir() / "last-fetch.json"
+
+
+def zen_probe_path() -> Path:
+    return user_data_dir() / "zen-probe.json"

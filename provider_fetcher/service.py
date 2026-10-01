@@ -4,19 +4,83 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
 
-from .catalog import Catalog
+from .catalog import Catalog, CatalogHit
 from .favorites import find_credential, load_last_fetch, public_favorites, save_last_fetch
 from .fetch import fetch_model_ids
 from .urlutil import normalize_base_url
+from .zen_probe import load_report
 
 API_FORMAT_HINT = "建议先尝试 Responses（/responses）；不通再改 Chat Completions 或 Anthropic Messages"
 
 
+def _provider_hint(base_url: str) -> str | None:
+    host = urlparse(base_url).netloc.lower()
+    return "opencode" if "opencode.ai" in host else None
+
+
+def _context_points(context: Any) -> int:
+    if not isinstance(context, int) or context <= 0:
+        return 0
+    for threshold, points in ((1_000_000, 40), (400_000, 34), (200_000, 28), (128_000, 22), (32_000, 12)):
+        if context >= threshold:
+            return points
+    return 6
+
+
+def _output_points(output: Any) -> int:
+    if not isinstance(output, int) or output <= 0:
+        return 0
+    for threshold, points in ((256_000, 20), (128_000, 16), (64_000, 12), (32_000, 8)):
+        if output >= threshold:
+            return points
+    return 4
+
+
+def _reasoning_points(hit: CatalogHit) -> int:
+    if hit.reasoning_capable is not True:
+        return 0
+    levels = hit.reasoning_levels or []
+    if any(level in ("max", "xhigh") for level in levels):
+        return 15
+    if len(levels) >= 3:
+        return 10
+    return 5
+
+
+def _model_score(hit: CatalogHit) -> int:
+    """透明评分（满分 100）：上下文 40 + 最大输出 20 + 推理 15 + 工具调用 15 + 多模态 6 + 结构化 4。"""
+    return (
+        _context_points(hit.context)
+        + _output_points(hit.max_output)
+        + _reasoning_points(hit)
+        + (15 if hit.tool_call is True else 0)
+        + min(6, 2 * max(0, len(hit.inputs) - 1))
+        + (4 if hit.structured_output is True else 0)
+    )
+
+
+def _is_free(hit: CatalogHit, model_id: str) -> bool:
+    """与 OpenCode 桌面版一致：opencode 供应商 + （无 cost 或 cost.input 为 0），且目录未标记废弃。
+
+    - isFree 规则逐字取自 opencode 源码 packages/app/src/components/dialog-select-model.tsx：
+      `provider === "opencode" && (!cost || cost.input === 0)`。
+    - 再排除 `status == "deprecated"`：Zen 已下架的条目仍留在 models.dev 与公开 /models 里，
+      但桌面版不会列出（实测该过滤后与桌面版当前免费名单完全一致）。
+    """
+    if hit.catalog_provider != "opencode":
+        return False
+    if hit.status == "deprecated":
+        return False
+    cost = hit.cost
+    return not cost or cost.get("input") == 0
+
+
 def enrich_models(base_url: str, models: list[dict[str, str]], catalog: Catalog) -> list[dict[str, Any]]:
+    hint = _provider_hint(base_url)
     rows: list[dict[str, Any]] = []
     for model in models:
         model_id = model["id"]
-        hit = catalog.lookup(model_id)
+        hit = catalog.lookup(model_id, provider_hint=hint)
         rows.append(
             {
                 "id": model_id,
@@ -28,13 +92,21 @@ def enrich_models(base_url: str, models: list[dict[str, str]], catalog: Catalog)
                 "kind": hit.kind,
                 "matched": hit.matched,
                 "notes": hit.notes,
+                "structured_output": hit.structured_output,
+                "reasoning_capable": hit.reasoning_capable,
+                "reasoning_levels": hit.reasoning_levels,
+                "reasoning_budget_min": hit.reasoning_budget_min,
+                "interleaved_field": hit.interleaved_field,
+                "tool_call": hit.tool_call,
+                "free": _is_free(hit, model_id),
+                "score": _model_score(hit),
                 "catalog_provider": hit.catalog_provider,
                 "catalog_id": hit.catalog_id,
                 "base_url": base_url,
             }
         )
     kind_rank = {"chat": 0, "image": 1, "video": 2}
-    rows.sort(key=lambda row: (kind_rank.get(row["kind"], 9), row["id"].lower()))
+    rows.sort(key=lambda row: (kind_rank.get(row["kind"], 9), not row["free"], -row["score"], row["id"].lower()))
     return rows
 
 
@@ -78,6 +150,7 @@ def bootstrap_state() -> dict[str, Any]:
         "catalog_fetched_at": catalog.fetched_at,
         "favorites": public_favorites(),
         "last_fetch": last,
+        "zen_probe": load_report(),
     }
 
 

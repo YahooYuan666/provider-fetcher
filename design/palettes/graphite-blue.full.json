@@ -1,0 +1,38 @@
+{
+  "key": "graphite_blue",
+  "mode": "dark",
+  "name": "石墨蓝 Graphite Blue",
+  "l1": {
+    "bg": "#101216",
+    "panel": "#191D24",
+    "sidebar": "#0B0D11",
+    "log_bg": "#0B0D11",
+    "text": "#ECEEF2",
+    "muted": "#A3ACBA",
+    "border": "#6B7382",
+    "primary": "#8FA9F2",
+    "primary_hover": "#A5BCF6",
+    "primary_text": "#0D1220",
+    "success": "#93D6A5",
+    "warning": "#E8C57C",
+    "error": "#F09A9A"
+  },
+  "l2": {
+    "hover_bg": "#262a30",
+    "pressed_bg": "#30343b",
+    "selected_bg": "#272e3d",
+    "sidebar_hover_bg": "#1d1f23",
+    "input_hover_border": "#7b8bb4",
+    "focus_ring": "#6678aa",
+    "scrollbar_thumb": "#4d535d",
+    "scrollbar_thumb_hover": "#8d9095",
+    "success_soft": "#253031",
+    "success_text": "#93D6A5",
+    "warning_soft": "#2e2e2d",
+    "warning_text": "#E8C57C",
+    "error_soft": "#2f2a30",
+    "error_text": "#F09A9A",
+    "info_soft": "#252b39",
+    "info_text": "#8FA9F2"
+  }
+}
