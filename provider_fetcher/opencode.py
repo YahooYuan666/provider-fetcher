@@ -37,6 +37,14 @@ def provider_slug(base_url: str) -> str:
     return slug or "custom-provider"
 
 
+def npm_package(base_url: str) -> str:
+    """选 AI SDK 包：OpenAI 原生走 responses，其它中转统一走 chat completions。"""
+    host = (urlparse(base_url).netloc or base_url).lower()
+    if host in ("api.openai.com", "openai.azure.com"):
+        return "@ai-sdk/openai"
+    return "@ai-sdk/openai-compatible"
+
+
 def _model_entry(row: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
     model_id = str(row.get("id") or "").strip()
     if not model_id:
@@ -97,7 +105,7 @@ def build_opencode_config(base_url: str, api_key: str, rows: list[dict[str, Any]
         "$schema": "https://opencode.ai/config.json",
         "provider": {
             slug: {
-                "npm": "@ai-sdk/openai-compatible",
+                "npm": npm_package(base_url),
                 "name": urlparse(base_url).netloc or slug,
                 "options": options,
                 "models": models,

@@ -21,8 +21,8 @@ from .favorites import (
 )
 from .service import bootstrap_state, fetch_and_enrich
 from .opencode import OPENCODE_PATHS, build_opencode_config
-from .paths import zen_probe_path
-from .zen_probe import probe_models
+from .opencode_write import preview as preview_opencode
+from .opencode_write import write_config
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 
@@ -63,28 +63,23 @@ class Handler(SimpleHTTPRequestHandler):
                 catalog = Catalog.load()
                 self._json(200, {"ok": True, "catalog_fetched_at": catalog.fetched_at})
                 return
-            if parsed.path == "/api/zen/verify":
-                models = body.get("models")
-                report = probe_models(
-                    str(body.get("base_url") or ""),
-                    str(body.get("api_key") or ""),
-                    [m for m in models if isinstance(m, str)] if isinstance(models, list) else [],
-                )
-                zen_probe_path().write_text(
-                    json.dumps(report, ensure_ascii=False), encoding="utf-8"
-                )
-                self._json(200, {"ok": True, **report})
-                return
             if parsed.path == "/api/export/opencode":
                 config = build_opencode_config(
                     str(body.get("base_url") or ""),
                     str(body.get("api_key") or ""),
                     body.get("models") if isinstance(body.get("models"), list) else [],
                 )
-                self._json(
-                    200,
-                    {"ok": True, "filename": "opencode.json", "config": config, "paths": OPENCODE_PATHS},
-                )
+                payload = {
+                    "ok": True,
+                    "filename": "opencode.json",
+                    "config": config,
+                    "paths": OPENCODE_PATHS,
+                }
+                if body.get("write"):
+                    payload["written"] = write_config(config)
+                elif body.get("preview"):
+                    payload["preview"] = preview_opencode(config)
+                self._json(200, payload)
                 return
             if parsed.path == "/api/favorites":
                 items = upsert_credential(

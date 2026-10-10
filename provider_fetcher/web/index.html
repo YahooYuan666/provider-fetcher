@@ -49,7 +49,6 @@
             <button type="button" data-filter="image" class="chip">生图</button>
             <button type="button" data-filter="video" class="chip">生视频</button>
           </div>
-          <button type="button" id="zenVerifyBtn" class="ghost" disabled>实测能否外部调用</button>
           <button type="button" id="opencodeBtn" class="ghost" disabled>生成 OpenCode 配置</button>
           <input id="search" type="search" placeholder="筛选模型 ID" />
         </div>
@@ -65,7 +64,6 @@
               <th>推理等级</th>
               <th>结构化输出</th>
               <th class="num" title="纸面参数对照，不是能力评分。上下文窗口 40 + 最大输出 20 + 推理档位 15 + 工具调用 15 + 多模态输入 6 + 结构化输出 4；权重由本工具设定，无社区榜单依据。悬停看逐项明细。">规格参考分</th>
-              <th>实测外部调用</th>
               <th>来源</th>
             </tr>
           </thead>
@@ -99,11 +97,13 @@
   <div id="opencodeDialog" class="dialog hidden" role="dialog" aria-modal="true" aria-labelledby="opencodeDialogTitle">
     <div class="dialog-card">
       <h3 id="opencodeDialogTitle">生成 OpenCode 配置</h3>
-      <p>已按当前模型列表生成 opencode.json（只含对话模型）。下载后放到下面任意一个路径，重启 opencode 生效。</p>
+      <p>已按当前模型列表生成 opencode.json（只含对话模型）。可以直接写入本机 OpenCode 配置，也可以下载后自行放置。</p>
       <div id="opencodePaths" class="opencode-paths"></div>
       <div class="dialog-actions">
         <button type="button" id="opencodeCancelBtn" class="ghost">取消</button>
-        <button type="button" id="opencodeDownloadBtn">下载 opencode.json</button>
+        <button type="button" id="opencodePreviewBtn" class="ghost">预览写入位置</button>
+        <button type="button" id="opencodeWriteBtn">写入本机配置</button>
+        <button type="button" id="opencodeDownloadBtn" class="ghost">下载</button>
       </div>
     </div>
   </div>

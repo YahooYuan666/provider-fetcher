@@ -5,7 +5,6 @@ const state = {
   query: "",
   lastFetch: null,
   lastCredential: null,
-  probe: {},
 };
 
 const els = {
@@ -27,11 +26,12 @@ const els = {
   favoriteName: document.getElementById("favoriteName"),
   nameCancelBtn: document.getElementById("nameCancelBtn"),
   opencodeBtn: document.getElementById("opencodeBtn"),
-  zenVerifyBtn: document.getElementById("zenVerifyBtn"),
   opencodeDialog: document.getElementById("opencodeDialog"),
   opencodePaths: document.getElementById("opencodePaths"),
   opencodeCancelBtn: document.getElementById("opencodeCancelBtn"),
   opencodeDownloadBtn: document.getElementById("opencodeDownloadBtn"),
+  opencodePreviewBtn: document.getElementById("opencodePreviewBtn"),
+  opencodeWriteBtn: document.getElementById("opencodeWriteBtn"),
 };
 
 let toastTimer = 0;
@@ -180,24 +180,15 @@ function sortRows(rows) {
   );
 }
 
-function probeHtml(row) {
-  const result = state.probe[row.id];
-  if (!result) return row.free ? `<span class="muted-cell">未实测</span>` : `<span class="muted-cell">—</span>`;
-  const tone = result.status === "ok" ? "yes" : result.status === "unknown" ? "muted-cell" : "bad";
-  const detail = result.message ? ` title="${escapeAttr(result.message)}"` : "";
-  return `<span class="${tone}"${detail}>${escapeHtml(result.label)}</span>`;
-}
-
 function renderModels() {
   els.opencodeBtn.disabled = !state.models.length;
-  els.zenVerifyBtn.disabled = !state.models.some((row) => row.free);
   const rows = sortRows(state.models.filter((row) => {
     if (state.filter !== "all" && row.kind !== state.filter) return false;
     if (state.query && !row.id.toLowerCase().includes(state.query)) return false;
     return true;
   }));
   if (!rows.length) {
-    els.modelRows.innerHTML = `<tr><td colspan="9" class="empty">没有匹配的模型。</td></tr>`;
+    els.modelRows.innerHTML = `<tr><td colspan="8" class="empty">没有匹配的模型。</td></tr>`;
     return;
   }
   els.modelRows.innerHTML = rows.map((row) => `
@@ -213,7 +204,6 @@ function renderModels() {
       <td>${reasoningHtml(row)}</td>
       <td>${structuredHtml(row)}</td>
       <td class="num">${specScoreHtml(row)}</td>
-      <td>${probeHtml(row)}</td>
       <td>${escapeHtml(row.source)}</td>
     </tr>
   `).join("");
@@ -321,6 +311,35 @@ async function generateOpencodeConfig() {
   els.opencodeDialog.dataset.filename = data.filename || "opencode.json";
   opencodeConfig = data.config;
   els.opencodeDialog.classList.remove("hidden");
+}
+
+async function previewOpencodeWrite() {
+  const cred = credentialToSave();
+  try {
+    const data = await api("/api/export/opencode", {
+      method: "POST",
+      body: JSON.stringify({ base_url: cred.base_url, api_key: cred.api_key, models: state.models, preview: true }),
+    });
+    const p = data.preview;
+    setStatus(`将写入：${p.path}（${p.action}，判定依据：${p.basis}）${p.backup ? "，" + p.backup : ""}`);
+  } catch (error) {
+    setStatus(`预览失败：${error.message}`);
+  }
+}
+
+async function writeOpencodeConfig() {
+  const cred = credentialToSave();
+  try {
+    const data = await api("/api/export/opencode", {
+      method: "POST",
+      body: JSON.stringify({ base_url: cred.base_url, api_key: cred.api_key, models: state.models, write: true }),
+    });
+    const w = data.written;
+    els.opencodeDialog.classList.add("hidden");
+    setStatus(`已写入 ${w.path}（${w.action}）${w.backup ? "，原文件已备份到 " + w.backup : ""}。重启 opencode 生效。`);
+  } catch (error) {
+    setStatus(`写入失败：${error.message}`);
+  }
 }
 
 function downloadOpencodeConfig() {
@@ -451,31 +470,6 @@ els.nameForm.addEventListener("submit", async (event) => {
   }
 });
 
-els.zenVerifyBtn.addEventListener("click", async () => {
-  const targets = state.models.filter((row) => row.free).map((row) => row.id);
-  if (!targets.length) return;
-  const cred = credentialToSave();
-  els.zenVerifyBtn.disabled = true;
-  els.zenVerifyBtn.classList.add("loading");
-  setStatus(`正在实测 ${targets.length} 个免费模型能否在本工具外部直接调用，每个模型发一次 1-token 请求…`);
-  try {
-    const data = await api("/api/zen/verify", {
-      method: "POST",
-      body: JSON.stringify({ base_url: cred.base_url, api_key: cred.api_key, models: targets }),
-    });
-    state.probe = data.results || {};
-    const direct = Object.values(state.probe).filter((item) => item.usable).length;
-    const clientOnly = Object.values(state.probe).filter((item) => item.status === "client_only").length;
-    setStatus(`实测完成：${data.probed} 个免费模型中，${direct} 个外部可调用、${clientOnly} 个仅限在 OpenCode 客户端内使用。结果存在本机。`);
-    renderModels();
-  } catch (error) {
-    setStatus(`实测失败：${error.message}`);
-  } finally {
-    els.zenVerifyBtn.classList.remove("loading");
-    els.zenVerifyBtn.disabled = !state.models.some((row) => row.free);
-  }
-});
-
 els.opencodeBtn.addEventListener("click", () => {
   generateOpencodeConfig().catch((error) => setStatus(`生成失败：${error.message}`));
 });
@@ -484,6 +478,8 @@ els.opencodeDialog.addEventListener("click", (event) => {
   if (event.target === els.opencodeDialog) els.opencodeDialog.classList.add("hidden");
 });
 els.opencodeDownloadBtn.addEventListener("click", downloadOpencodeConfig);
+els.opencodePreviewBtn.addEventListener("click", previewOpencodeWrite);
+els.opencodeWriteBtn.addEventListener("click", writeOpencodeConfig);
 
 els.favoriteRows.addEventListener("click", async (event) => {
   const refetch = event.target.closest("button[data-refetch]");
@@ -522,7 +518,6 @@ els.favoriteRows.addEventListener("click", async (event) => {
     const data = await api("/api/state");
     els.apiHint.textContent = data.api_format_hint || els.apiHint.textContent;
     applyFavorites(data.favorites || []);
-    if (data.zen_probe?.results) state.probe = data.zen_probe.results;
     if (data.last_fetch?.models) {
       // 先把上次的模型秒显出来，随后自动查询会被新结果覆盖
       state.models = data.last_fetch.models;

@@ -199,7 +199,6 @@ td.id-cell > div:first-child { font-family: var(--mono); font-size: 13px; }
 .kind { font-size: 11px; color: var(--ui-muted); }
 .levels { font-family: var(--mono); font-size: 12px; letter-spacing: 0.01em; }
 .yes { color: var(--ui-success-text); font-weight: 600; }
-.bad { color: var(--ui-error-text); font-weight: 600; }
 .no { color: var(--ui-muted); }
 .muted-cell { color: var(--ui-muted); }
 .empty { color: var(--ui-muted); text-align: center; padding: 30px 12px; margin: 0; }

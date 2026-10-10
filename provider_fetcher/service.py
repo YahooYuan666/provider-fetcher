@@ -8,7 +8,6 @@ from .catalog import Catalog, CatalogHit
 from .favorites import find_credential, load_last_fetch, public_favorites, save_last_fetch
 from .fetch import fetch_model_ids
 from .urlutil import normalize_base_url
-from .zen_probe import load_report
 
 API_FORMAT_HINT = "建议先尝试 Responses（/responses）；不通再改 Chat Completions 或 Anthropic Messages"
 
@@ -170,7 +169,6 @@ def bootstrap_state() -> dict[str, Any]:
         "catalog_fetched_at": catalog.fetched_at,
         "favorites": public_favorites(),
         "last_fetch": last,
-        "zen_probe": load_report(),
     }
 
 
