@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import ipaddress
 import json
+import os
+import socket
 import ssl
 import time
 import urllib.error
 import urllib.request
 from typing import Any
+from urllib.parse import urlparse
 
 from .urlutil import models_url_candidates
 
@@ -78,9 +82,56 @@ def parse_model_list(body: Any) -> list[dict[str, str]]:
     return models
 
 
+BLOCKED_TARGET_HOSTS = frozenset({"169.254.169.254", "metadata.google.internal"})
+
+
+def _private_targets_allowed() -> bool:
+    """是否允许回环/内网目标。
+
+    本工具的用途就是查询用户自填的 Base URL，本地网关（127.0.0.1:7863 之类）
+    是常见且正当的场景，因此默认允许；设为 0 可收紧为只允许公网地址。
+    """
+    return os.environ.get("PROVIDER_FETCHER_ALLOW_PRIVATE", "1") != "0"
+
+
+def safe_target(url: str) -> str:
+    """出站白名单：协议、主机白名单与解析后 IP 边界校验，返回校验过的 URL。
+
+    云元数据地址无条件拒绝；环回/私网地址取决于 _private_targets_allowed()。
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("TARGET_SCHEME_BLOCKED")
+    host = (parsed.hostname or "").lower()
+    if host in BLOCKED_TARGET_HOSTS:
+        raise ValueError("TARGET_HOST_BLOCKED")
+    if _private_targets_allowed():
+        return url
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        # 解析失败交给请求阶段报错，这里不因解析问题放过未知地址
+        return url
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip in ipaddress.ip_network("198.18.0.0/15"):
+            continue  # 本地代理 fake-ip 占位解析，不是真实内网目标
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            raise ValueError("TARGET_IP_BLOCKED")
+    return url
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """跟随 302 可能被带到内网地址，这里直接拒绝跳转。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102
+        return None
+
+
 def _get_json(url: str, api_key: str, timeout: int) -> tuple[Any, int]:
+    target = safe_target(url)
     request = urllib.request.Request(
-        url,
+        target,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Accept": "application/json",
@@ -88,8 +139,9 @@ def _get_json(url: str, api_key: str, timeout: int) -> tuple[Any, int]:
         },
     )
     context = ssl.create_default_context()
+    opener = urllib.request.build_opener(_NoRedirect, urllib.request.HTTPSHandler(context=context))
     try:
-        with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+        with opener.open(request, timeout=timeout) as response:
             raw = response.read().decode("utf-8", errors="replace")
             status = getattr(response, "status", 200)
     except urllib.error.HTTPError as exc:

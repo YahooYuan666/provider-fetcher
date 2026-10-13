@@ -40,8 +40,23 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
+    def _foreign_origin(self) -> bool:
+        """只接受同源调用：挡掉任意网页借浏览器对本机发起的跨源请求。
+
+        本工具按设计会请求用户填的任意 Base URL，若不校验来源，外网页面
+        可以让本机替它探测内网地址。没有 Origin 头（curl、同源 GET）放行。
+        """
+        origin = self.headers.get("Origin")
+        if not origin:
+            return False
+        host = self.headers.get("Host") or ""
+        return origin not in {f"http://{host}", f"https://{host}"}
+
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/") and self._foreign_origin():
+            self._json(403, {"ok": False, "error": "CROSS_ORIGIN_BLOCKED"})
+            return
         if parsed.path == "/api/state":
             self._json(200, bootstrap_state())
             return
@@ -52,6 +67,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/") and self._foreign_origin():
+            self._json(403, {"ok": False, "error": "CROSS_ORIGIN_BLOCKED"})
+            return
         body = self._read_json()
         try:
             if parsed.path == "/api/fetch":

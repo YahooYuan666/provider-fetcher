@@ -433,8 +433,13 @@ class RefreshCacheTests(unittest.TestCase):
         response.read.return_value = json.dumps(payload).encode("utf-8")
         response.__enter__.return_value = response
         response.__exit__.return_value = False
-        with patch.object(catalog.urllib.request, "urlopen", return_value=response):
-            envelope = Catalog.refresh()
+        # refresh 走 build_opener().open，且会做上游 IP 校验，两处都要挡
+        opener = MagicMock()
+        opener.open.return_value = response
+        dns = [(2, 1, 6, "", ("93.184.216.34", 443))]
+        with patch.object(catalog.urllib.request, "build_opener", return_value=opener):
+            with patch.object(catalog.socket, "getaddrinfo", return_value=dns):
+                envelope = Catalog.refresh()
         data = json.loads(self.cache.read_text(encoding="utf-8"))
         self.assertEqual(data["providers"], payload)
         self.assertEqual(envelope["providers"], payload)

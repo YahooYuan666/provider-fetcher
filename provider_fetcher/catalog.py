@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
+import socket
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 from typing import Any
 
 from .ids import (
@@ -14,6 +17,7 @@ from .ids import (
     lookup_candidates,
     normalize_model_id,
     remainder_tokens_are_soft,
+    strip_namespace_prefix,
     strip_routing_suffixes,
 )
 from .paths import catalog_cache_path
@@ -55,6 +59,36 @@ class CatalogHit:
     tool_call: bool | None = None
     cost: dict[str, Any] | None = None
     status: str | None = None
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """目录源不允许跳转：避免被 302 带去内网地址。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102
+        return None
+
+
+def _assert_public_https(target: str) -> None:
+    """固定上游校验：https + 白名单主机 + 解析 IP 不得指向本机/内网/元数据。
+
+    198.18.0.0/15 是 RFC 2544 基准测试段，Clash 等代理的 fake-ip 模式会用它
+    做占位解析，属正常出口路径，不按私网拒绝。
+    """
+    parsed = urlparse(target)
+    if parsed.scheme != "https" or parsed.hostname != "models.dev":
+        raise ValueError("CATALOG_URL_UNSAFE")
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, 443, proto=socket.IPPROTO_TCP)
+    except OSError as exc:
+        raise ValueError("CATALOG_DNS_FAILED") from exc
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip in ipaddress.ip_network("198.18.0.0/15"):
+            continue  # 本地代理 fake-ip 占位
+        if ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast:
+            raise ValueError("CATALOG_IP_BLOCKED")
+        if ip.is_private:
+            raise ValueError("CATALOG_IP_BLOCKED")
 
 
 class Catalog:
@@ -99,11 +133,15 @@ class Catalog:
 
     @staticmethod
     def refresh() -> dict[str, Any]:
+        # 固定上游：https + 白名单主机 + 公网 IP，且不跟随跳转
+        target = "https://models.dev/api.json"
+        _assert_public_https(target)
         request = urllib.request.Request(
-            CATALOG_URL,
+            target,
             headers={"User-Agent": "provider-fetcher/0.2"},
         )
-        with urllib.request.urlopen(request, timeout=60) as response:
+        opener = urllib.request.build_opener(_NoRedirect)
+        with opener.open(request, timeout=60) as response:
             payload = json.loads(response.read().decode("utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("CATALOG_INVALID")
@@ -150,6 +188,9 @@ class Catalog:
         if provider_id not in OFFICIAL_PROVIDERS and provider_id != provider_hint:
             notes.append("无官方实验室条目，使用中转副本")
         live_norm = normalize_model_id(model_id)
+        bare_norm = strip_namespace_prefix(model_id)
+        if bare_norm:
+            live_norm = bare_norm
         catalog_norm = normalize_model_id(catalog_id)
         if live_norm != catalog_norm:
             notes.append(f"按 {catalog_id} 铰链")
@@ -270,6 +311,10 @@ def _short_id(model_id: str) -> str:
 def _score(record: tuple[str, str, dict[str, Any]], model_id: str) -> int:
     provider_id, catalog_id, _model = record
     live = _short_id(model_id)
+    # 中转命名空间前缀（cn: / global/ / vendor_）不参与匹配判断
+    bare = strip_namespace_prefix(model_id)
+    if bare:
+        live = normalize_model_id(bare)
     stripped = strip_routing_suffixes(live)
     collapsed = collapse_minor_version(stripped) or collapse_minor_version(live)
     catalog = _short_id(catalog_id)
